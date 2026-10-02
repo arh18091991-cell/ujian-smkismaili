@@ -132,6 +132,7 @@
       '<button class="btn primary" id="b-next" type="button">Selanjutnya →</button></footer>' +
       '<div class="overlay hidden" id="overlay"></div></div>';
 
+    try { U.prefetchSoal(P.soal); } catch (e) { /* abaikan */ }
     const body = U.$('#ex-body'), ov = U.$('#overlay');
     const handlers = [], intervals = [];
     function on(t, ty, fn, o) { t.addEventListener(ty, fn, o); handlers.push([t, ty, fn, o]); }
@@ -162,14 +163,14 @@
         ans = q.opsi.map(function (o, i) {
           const on = q.tipe === 'pg' ? cur === o.k : (Array.isArray(cur) && cur.indexOf(o.k) >= 0);
           return '<label class="opt' + (q.tipe === 'pgk' ? ' sq' : '') + (on ? ' on' : '') + '"><input type="' + (q.tipe === 'pg' ? 'radio' : 'checkbox') + '" name="o" value="' + o.k + '"' + (on ? ' checked' : '') + '>' +
-            '<span class="lt">' + LET[i] + '</span><span class="tx">' + U.nl2br(o.t) + '</span></label>';
+            '<span class="lt">' + LET[i] + '</span><span class="tx">' + U.rich(o.t) + '</span></label>';
         }).join('');
       }
       body.innerHTML = '<div class="q-wrap' + (q.wacana ? ' two' : '') + '">' +
-        (q.wacana ? '<div class="q-card stim"><div class="stim-label">Wacana</div><div class="q-text">' + U.nl2br(q.wacana) + '</div></div>' : '') +
+        (q.wacana ? '<div class="q-card stim"><div class="stim-label">Wacana</div><div class="q-text">' + U.rich(q.wacana) + '</div></div>' : '') +
         '<div class="q-card"><div class="q-head"><span class="q-no">Soal ' + (E.idx + 1) + ' / ' + tot + '</span><span class="q-type">' + typeLbl + '</span></div>' +
         (img ? '<img class="q-img" src="' + esc(img) + '" alt="Gambar soal" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">' : '') +
-        '<div class="q-text">' + U.nl2br(q.pertanyaan) + '</div><div class="q-ans">' + ans + '</div></div></div>';
+        '<div class="q-text">' + U.rich(q.pertanyaan) + '</div><div class="q-ans">' + ans + '</div></div></div>';
       body.scrollTop = 0;
       body.style.fontSize = E.font + 'px';
 

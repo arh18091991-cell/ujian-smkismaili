@@ -9,14 +9,14 @@
   const VIEWS = {};
   const TITLES = {
     ringkasan: 'Ringkasan', soal: 'Bank Soal', ujian: 'Jadwal Ujian', monitor: 'Monitoring Ujian', hasil: 'Hasil & Nilai',
-    pelanggaran: 'Catatan Pelanggaran', pengguna: 'Manajemen Pengguna', pengaturan: 'Pengaturan Sekolah', akun: 'Akun Saya'
+    pelanggaran: 'Catatan Pelanggaran', pengguna: 'Manajemen Pengguna', tahun: 'Tahun Ajaran, Naik Kelas & Arsip', pengaturan: 'Pengaturan Sekolah', akun: 'Akun Saya'
   };
 
   /* ---------- kerangka ---------- */
   U.renderStaff = async function () {
     const admin = isAdmin();
     const items = [['ringkasan', 'Ringkasan'], ['sep', 'Ujian'], ['soal', 'Bank Soal'], ['ujian', 'Jadwal Ujian'], ['monitor', 'Monitoring'], ['hasil', 'Hasil & Nilai'], ['pelanggaran', 'Pelanggaran']];
-    if (admin) items.push(['sep', 'Administrasi'], ['pengguna', 'Pengguna'], ['pengaturan', 'Pengaturan']);
+    if (admin) items.push(['sep', 'Administrasi'], ['pengguna', 'Pengguna'], ['tahun', 'Tahun Ajaran'], ['pengaturan', 'Pengaturan']);
     items.push(['sep', 'Akun'], ['akun', 'Akun Saya']);
     U.app.innerHTML =
       '<div class="shell"><aside class="side" id="side"><div class="side-brand">' + U.brand() +
@@ -58,7 +58,7 @@
         return '<tr>' + cols.map(function (c) { return '<td class="' + (c.cls || '') + '">' + c.f(r, i) + '</td>'; }).join('') + '</tr>';
       }).join('') + '</tbody></table></div>';
   }
-  function cut(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; }
+  function cut(s, n) { s = String(s || '').replace(/\[img:[\w-]+\]/g, '[gambar]'); return s.length > n ? s.slice(0, n) + '…' : s; }
   function uniq(a) { return a.filter(function (x, i) { return x && a.indexOf(x) === i; }); }
   function toInput(ms) { return new Date(ms + 7 * 3600e3).toISOString().slice(0, 16); }
   function opts(list, sel, blank) {
@@ -100,7 +100,7 @@
     const sel = {};
     box.innerHTML =
       '<div class="toolbar"><select id="f-mapel"></select><input id="soal-q" class="grow" placeholder="Cari pertanyaan…">' +
-      '<button class="btn primary" id="b-add" type="button">+ Tambah Soal</button><button class="btn" id="b-imp" type="button">Import dari Excel</button>' +
+      '<button class="btn primary" id="b-add" type="button">+ Tambah Soal</button><button class="btn" id="b-imp" type="button">Import dari Excel</button><button class="btn" id="b-impw" type="button">Import dari Word</button>' +
       '<button class="btn danger" id="b-del" type="button" disabled>Hapus</button></div><div id="soal-tbl"></div>';
     function draw() {
       const mapels = uniq(list.map(function (q) { return q.mapel; })).sort();
@@ -117,7 +117,7 @@
         { h: 'No', f: function (q, i) { return i + 1; } },
         { h: 'Mapel', f: function (q) { return esc(q.mapel) + (q.kelas ? '<div class="small muted">' + esc(q.kelas) + '</div>' : ''); } },
         { h: 'Tipe', f: function (q) { return '<span class="badge">' + TIPE[q.tipe] + '</span>'; } },
-        { h: 'Pertanyaan', f: function (q) { return esc(cut(q.pertanyaan, 110)) + (q.wacana ? ' <span class="badge gray">wacana</span>' : '') + (q.gambar ? ' <span class="badge gray">gambar</span>' : ''); } },
+        { h: 'Pertanyaan', f: function (q) { return esc(cut(q.pertanyaan, 110)) + (q.wacana ? ' <span class="badge gray">wacana</span>' : '') + ((q.gambar || /\[img:/.test([q.wacana, q.pertanyaan, q.A, q.B, q.C, q.D, q.E].join(' '))) ? ' <span class="badge gray">gambar</span>' : ''); } },
         { h: 'Kunci', f: function (q) { return '<b class="mono">' + esc(cut(q.kunci, 22)) + '</b>'; } },
         { h: 'Bobot', cls: 'num', f: function (q) { return q.bobot; } },
         { h: '', cls: 'right', f: function (q) { return '<button class="btn sm" data-edit="' + esc(q.id) + '">Edit</button>'; } }
@@ -134,6 +134,7 @@
     U.$('#soal-q', box).oninput = draw;
     U.$('#b-add', box).onclick = function () { soalForm(null, reload, U.$('#f-mapel', box).value); };
     U.$('#b-imp', box).onclick = function () { soalImport(reload); };
+    U.$('#b-impw', box).onclick = function () { soalImportWord(reload, U.$('#f-mapel', box).value); };
     U.$('#b-del', box).onclick = async function () {
       const ids = Object.keys(sel).filter(function (k) { return sel[k]; });
       if (!(await U.confirm('Hapus ' + ids.length + ' soal terpilih? Tindakan ini tidak dapat dibatalkan.', { danger: true, okText: 'Hapus' }))) return;
@@ -149,7 +150,7 @@
     q = q || { tipe: 'pg', bobot: 1, mapel: defMapel || '' };
     const keys = String(q.kunci || '').split(',');
     const rows = LET.map(function (k) {
-      return '<div class="opsi-row"><span class="lt">' + k + '</span><input type="text" data-o="' + k + '" value="' + esc(q[k] || '') + '" placeholder="Pilihan ' + k + '">' +
+      return '<div class="opsi-row"><span class="lt">' + k + '</span><input type="text" data-o="' + k + '" value="' + esc(q[k] || '') + '" placeholder="Pilihan ' + k + '"><button class="btn sm" type="button" data-up="o-' + k + '" title="Sisipkan gambar pada pilihan ' + k + '">🖼</button>' +
         '<label class="key"><input type="checkbox" data-k="' + k + '"' + (keys.indexOf(k) >= 0 && q.tipe !== 'isian' ? ' checked' : '') + '> Kunci</label></div>';
     }).join('');
     U.modal({
@@ -160,11 +161,16 @@
         '<label>Tipe soal<select id="f-tipe"><option value="pg">Pilihan ganda</option><option value="pgk">Pilihan ganda kompleks</option><option value="isian">Isian singkat</option></select></label>' +
         '<label>Kelas (opsional, hanya catatan)<input id="f-kls" value="' + esc(q.kelas || '') + '"></label>' +
         '<label>Bobot nilai<input id="f-bobot" type="number" min="0.5" step="0.5" value="' + esc(q.bobot || 1) + '"></label></div>' +
+        '<div class="alert info small">Ada gambar atau rumus? Buat <b>screenshot</b>, lalu klik di kotak yang diinginkan dan tekan <b>Ctrl+V</b>. Atau klik tombol 🖼 untuk memilih file. Gambar boleh di wacana, pertanyaan, dan pilihan jawaban. Tulisan <span class="mono">[img:…]</span> adalah gambarnya, jangan dihapus kecuali ingin membuang gambar.</div>' +
         '<label>Wacana / stimulus (opsional)<textarea id="f-wac" rows="3">' + esc(q.wacana || '') + '</textarea></label>' +
-        '<label>Gambar (URL, opsional — boleh link Google Drive yang dibagikan publik)<input id="f-img" value="' + esc(q.gambar || '') + '" placeholder="https://…"></label>' +
+        '<div class="imgtool"><button class="btn sm" type="button" data-up="f-wac">🖼 Sisipkan gambar ke wacana</button></div>' +
+        '<label>Gambar utama di atas pertanyaan (opsional, alamat gambar)<input id="f-img" value="' + esc(q.gambar || '') + '" placeholder="https://… atau klik tombol di bawah"></label>' +
+        '<div class="imgtool"><button class="btn sm" type="button" data-up="f-img">🖼 Unggah gambar utama</button></div>' +
         '<label>Pertanyaan<textarea id="f-q" rows="3">' + esc(q.pertanyaan || '') + '</textarea></label>' +
+        '<div class="imgtool"><button class="btn sm" type="button" data-up="f-q">🖼 Sisipkan gambar ke pertanyaan</button></div>' +
         '<div id="box-opsi"><div class="small muted" style="margin-bottom:6px;font-weight:600">Pilihan jawaban (kosongkan yang tidak dipakai) dan centang kunci</div>' + rows + '</div>' +
-        '<div id="box-isian" class="hidden"><label>Kunci jawaban isian<input id="f-isian" value="' + esc(q.tipe === 'isian' ? q.kunci : '') + '"><div class="hint">Boleh lebih dari satu jawaban benar, pisahkan dengan tanda | (contoh: Jakarta|DKI Jakarta). Huruf besar/kecil tidak dibedakan.</div></label></div>',
+        '<div id="box-isian" class="hidden"><label>Kunci jawaban isian<input id="f-isian" value="' + esc(q.tipe === 'isian' ? q.kunci : '') + '"><div class="hint">Boleh lebih dari satu jawaban benar, pisahkan dengan tanda | (contoh: Jakarta|DKI Jakarta). Huruf besar/kecil tidak dibedakan.</div></label></div>' +
+        '<div class="sec-head" style="margin:16px 0 6px"><h3 style="font-size:15px">Pratinjau tampilan siswa</h3></div><div class="card prev" id="f-prev"></div>',
       onOpen: function (m) {
         const tipe = m.$('#f-tipe');
         tipe.value = q.tipe || 'pg';
@@ -179,6 +185,22 @@
           });
         }
         tipe.onchange = sync; sync();
+        U.imageField(m.$('#f-wac'), m.$('[data-up="f-wac"]'), 'token');
+        U.imageField(m.$('#f-q'), m.$('[data-up="f-q"]'), 'token');
+        U.imageField(m.$('#f-img'), m.$('[data-up="f-img"]'), 'url');
+        LET.forEach(function (k) { U.imageField(m.$('[data-o="' + k + '"]'), m.$('[data-up="o-' + k + '"]'), 'token'); });
+        function prev() {
+          const g = U.imgUrl(m.$('#f-img').value), t2 = tipe.value, wac = m.$('#f-wac').value;
+          const ops = t2 === 'isian' ? '<div class="muted small">(siswa mengetik jawaban singkat)</div>' : LET.filter(function (k) { return m.$('[data-o="' + k + '"]').value.trim(); }).map(function (k) {
+            return '<div class="prev-opt"><span class="lt">' + k + '</span><span>' + U.rich(m.$('[data-o="' + k + '"]').value) + '</span></div>';
+          }).join('');
+          m.$('#f-prev').innerHTML = (wac ? '<div class="prev-wac">' + U.rich(wac) + '</div>' : '') +
+            (g ? '<img class="q-img" src="' + esc(g) + '" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">' : '') +
+            '<div class="q-text">' + (U.rich(m.$('#f-q').value) || '<span class="muted">(pertanyaan kosong)</span>') + '</div>' + ops;
+        }
+        let pt = null;
+        m.body.addEventListener('input', function () { clearTimeout(pt); pt = setTimeout(prev, 250); });
+        prev();
       },
       buttons: [{ text: 'Batal' }, {
         text: 'Simpan', cls: 'primary',
@@ -235,13 +257,151 @@
     });
   }
 
+
+  /* ---------- Import dari Word (tempel teks) ---------- */
+  const CONTOH_WORD =
+    'Mapel: Matematika\n\n' +
+    '1. Hasil dari 12 x 8 adalah ...\nA. 86\nB. 96\nC. 106\nD. 108\nKunci: B\n\n' +
+    '2. Pilih semua bilangan prima berikut!\nA. 2\nB. 9\nC. 11\nD. 15\nKunci: A, C\nBobot: 2\n\n' +
+    '3. Hasil dari 15 + 27 adalah ...\nKunci: 42\n\n' +
+    '4. Rata-rata nilai kelima siswa tersebut adalah ...\nWacana: Lima siswa mengikuti ulangan dan mendapat nilai 70, 80, 90, 100, dan 60.\nA. 76\nB. 78\nC. 80\nD. 82\nKunci: C\n';
+
+  /** Mengubah teks (hasil salin dari Word) menjadi daftar soal. Mengembalikan { rows, mapel, kelas }. */
+  function parseSoalText(text) {
+    const lines = String(text || '').replace(/\r/g, '').replace(/[   ]/g, ' ').replace(/\t+/g, ' ').split('\n');
+    const RE_NUM = /^\s*(\d{1,3})\s*[\.\)](?:\s+(.*))?$/, RE_OPT = /^\s*\(?([A-Ea-e])\s*[\.\)]\s*(.*)$/;
+    const RE_DIR = /^\s*(kunci\s*jawaban|kunci|jawaban|key|bobot|skor|gambar|wacana|stimulus|pertanyaan|tipe|jenis\s*soal)\s*[:=]\s*(.*)$/i;
+    const numbered = lines.some(function (l) { return RE_NUM.test(l); });
+    const blocks = [], glob = { mapel: '', kelas: '' };
+    let cur = null;
+    lines.forEach(function (l) {
+      const m = RE_NUM.exec(l);
+      if (numbered) {
+        if (m) { cur = [m[2] || '']; blocks.push(cur); return; }
+        if (!cur) {
+          const g = /^\s*(mapel|kelas)\s*[:=]\s*(.+)$/i.exec(l);
+          if (g) glob[g[1].toLowerCase()] = g[2].trim();
+          return;
+        }
+        cur.push(l);
+      } else {
+        if (!l.trim()) { cur = null; return; }
+        const g = /^\s*(mapel|kelas)\s*[:=]\s*(.+)$/i.exec(l);
+        if (g && !cur) { glob[g[1].toLowerCase()] = g[2].trim(); return; }
+        if (!cur) { cur = []; blocks.push(cur); }
+        cur.push(l);
+      }
+    });
+    const rows = blocks.map(function (b, bi) {
+      const q = { no: bi + 1, pert: [], wac: [], opt: {}, kunci: '', bobot: '', gambar: '', tipe: '' };
+      let st = 'q', last = '';
+      b.forEach(function (raw) {
+        const t = raw.trim();
+        if (!t) { if (st === 'q' && q.pert.length) q.pert.push(''); if (st === 'w' && q.wac.length) q.wac.push(''); return; }
+        const d = RE_DIR.exec(t);
+        if (d) {
+          const k = d[1].toLowerCase().replace(/\s+/g, ' ');
+          if (/^(kunci|jawaban|key)/.test(k)) { q.kunci = d[2].trim(); st = 'k'; }
+          else if (/^(bobot|skor)/.test(k)) { q.bobot = d[2].trim(); st = 'b'; }
+          else if (k === 'gambar') { q.gambar = d[2].trim(); st = 'g'; }
+          else if (/^(wacana|stimulus)/.test(k)) { st = 'w'; if (d[2].trim()) q.wac.push(d[2].trim()); }
+          else if (k === 'pertanyaan') { st = 'q'; if (d[2].trim()) q.pert.push(d[2].trim()); }
+          else { q.tipe = d[2].trim(); st = 't'; }
+          return;
+        }
+        const o = RE_OPT.exec(t);
+        if (o && st !== 'k') { last = o[1].toUpperCase(); q.opt[last] = o[2].trim(); st = 'o'; return; }
+        if (st === 'q') q.pert.push(t);
+        else if (st === 'w') q.wac.push(t);
+        else if (st === 'o') q.opt[last] += '\n' + t;
+        else if (st === 'k') q.kunci += ' ' + t;
+      });
+      const r = {
+        no: q.no, tipe: '', pertanyaan: q.pert.join('\n').trim(), wacana: q.wac.join('\n').trim(), gambar: q.gambar, bobot: q.bobot,
+        A: q.opt.A || '', B: q.opt.B || '', C: q.opt.C || '', D: q.opt.D || '', E: q.opt.E || '', kunci: '', salah: ''
+      };
+      const filled = LET.filter(function (k) { return r[k]; });
+      let tp = q.tipe.toLowerCase();
+      tp = /kompleks|pgk|banyak/.test(tp) ? 'pgk' : /isian|uraian|singkat/.test(tp) ? 'isian' : /pg|pilihan/.test(tp) ? 'pg' : '';
+      const huruf = q.kunci.toUpperCase().split(/[\s,;&]+|\bDAN\b/).filter(function (x) { return /^[A-E]$/.test(x); })
+        .filter(function (x, i, a) { return a.indexOf(x) === i; }).sort();
+      if (!tp) tp = filled.length >= 1 ? (huruf.length > 1 ? 'pgk' : 'pg') : 'isian';
+      r.tipe = tp;
+      r.kunci = tp === 'isian' ? q.kunci.trim() : huruf.join(',');
+      if (!r.pertanyaan && q.wac.length > 1) { r.pertanyaan = q.wac[q.wac.length - 1]; r.wacana = q.wac.slice(0, -1).join('\n').trim(); }   // wacana tanpa pertanyaan: baris terakhir dianggap pertanyaan
+      if (!r.pertanyaan) r.salah = 'pertanyaan kosong';
+      else if (tp !== 'isian' && filled.length < 2) r.salah = 'pilihan jawaban kurang dari 2';
+      else if (!r.kunci) r.salah = 'kunci belum ditulis (Kunci: …)';
+      else if (tp !== 'isian' && huruf.some(function (x) { return filled.indexOf(x) < 0; })) r.salah = 'kunci menunjuk pilihan yang kosong';
+      else if (tp === 'pg' && huruf.length !== 1) r.salah = 'pilihan ganda hanya boleh 1 kunci';
+      return r;
+    });
+    return { rows: rows, mapel: glob.mapel, kelas: glob.kelas };
+  }
+  U.parseSoalText = parseSoalText;
+
+  function soalImportWord(done, defMapel) {
+    U.modal({
+      title: 'Import Soal dari Word', size: 'lg', sticky: true,
+      body:
+        '<datalist id="dl-mw">' + (meta.mapel || []).map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' +
+        '<div class="alert info small"><b>Cara:</b> di Word tekan <b>Ctrl+A</b> lalu <b>Ctrl+C</b>, tempel (Ctrl+V) di kotak bawah. Tulis tiap soal begini:<pre class="mono" style="margin:6px 0 0;white-space:pre-wrap">1. Pertanyaan ...\nA. pilihan\nB. pilihan\nC. pilihan\nD. pilihan\nKunci: B\n(opsional) Bobot: 2   Wacana: ...   Gambar: https://...</pre>' +
+        'Tulis pertanyaan di baris bernomor. <span class="mono">Wacana:</span> berlaku sampai baris pilihan A. Jika pertanyaan ada setelah wacana, awali dengan <span class="mono">Pertanyaan:</span>. ' + +
+        'Kunci lebih dari satu → soal otomatis menjadi PG kompleks (<span class="mono">Kunci: A, C</span>). Tanpa pilihan A–D → soal isian (<span class="mono">Kunci: Jakarta|DKI Jakarta</span>). ' +
+        'Gambar tidak ikut tersalin; setelah import, buka soal itu lalu tempel gambarnya.</div>' +
+        '<div class="grid2"><label>Mata pelajaran<input id="w-mp" list="dl-mw" value="' + esc(defMapel || '') + '"></label><label>Kelas (opsional, catatan)<input id="w-kls"></label></div>' +
+        '<textarea id="w-txt" class="field mono" rows="10" placeholder="Tempel teks soal dari Word di sini…" style="white-space:pre-wrap"></textarea>' +
+        '<p style="margin:8px 0"><button class="btn sm" id="w-demo" type="button">Isi contoh</button> <span class="hint" id="w-cnt">0 soal terbaca</span></p><div id="w-prev"></div>',
+      onOpen: function (m) {
+        let res = { rows: [] }, t = null;
+        function show() {
+          res = parseSoalText(m.$('#w-txt').value);
+          if (res.mapel && !m.$('#w-mp').value.trim()) m.$('#w-mp').value = res.mapel;
+          if (res.kelas && !m.$('#w-kls').value.trim()) m.$('#w-kls').value = res.kelas;
+          const ok = res.rows.filter(function (r) { return !r.salah; }).length, bad = res.rows.length - ok;
+          m.$('#w-cnt').textContent = res.rows.length + ' soal terbaca' + (bad ? ', ' + bad + ' bermasalah (tidak ikut diimport)' : '');
+          m.$('#w-prev').innerHTML = res.rows.length ? table([
+            { h: 'No', f: function (r) { return r.no; } },
+            { h: 'Tipe', f: function (r) { return '<span class="badge">' + esc(r.tipe) + '</span>'; } },
+            { h: 'Pertanyaan', f: function (r) { return esc(cut(r.pertanyaan, 90)) + (r.wacana ? ' <span class="badge gray">wacana</span>' : ''); } },
+            { h: 'Pilihan', cls: 'num', f: function (r) { return LET.filter(function (k) { return r[k]; }).length || '–'; } },
+            { h: 'Kunci', f: function (r) { return '<b class="mono">' + esc(cut(r.kunci, 18)) + '</b>'; } },
+            { h: 'Status', f: function (r) { return r.salah ? '<span class="badge bad">' + esc(r.salah) + '</span>' : '<span class="badge ok">siap</span>'; } }
+          ], res.rows) : '';
+        }
+        m.$('#w-txt').oninput = function () { clearTimeout(t); t = setTimeout(show, 300); };
+        m.$('#w-demo').onclick = function () { m.$('#w-txt').value = CONTOH_WORD; show(); };
+        m.parsed = function () { return res; };
+      },
+      buttons: [{ text: 'Batal' }, {
+        text: 'Import soal yang siap', cls: 'primary',
+        onClick: async function (m) {
+          const mapel = m.$('#w-mp').value.trim();
+          if (!mapel) { U.toast('Isi mata pelajaran dulu.', 'err'); return false; }
+          const rows = m.parsed().rows.filter(function (r) { return !r.salah; }).map(function (r) {
+            return { mapel: mapel, kelas: m.$('#w-kls').value.trim(), tipe: r.tipe, pertanyaan: r.pertanyaan, A: r.A, B: r.B, C: r.C, D: r.D, E: r.E, kunci: r.kunci, bobot: r.bobot, wacana: r.wacana, gambar: r.gambar };
+          });
+          if (!rows.length) { U.toast('Belum ada soal yang siap diimport.', 'err'); return false; }
+          const r = await U.api('g_soalImport', { rows: rows }, { timeout: 90000 });
+          U.toast(r.berhasil + ' soal berhasil diimport' + (r.gagal.length ? ', ' + r.gagal.length + ' gagal.' : '.'), r.gagal.length ? '' : 'ok', 5000);
+          if (r.gagal.length) U.modal({ title: 'Soal yang gagal', body: '<ul class="small">' + r.gagal.slice(0, 60).map(function (g) { return '<li>Soal ke-' + g.baris + ': ' + esc(g.alasan) + '</li>'; }).join('') + '</ul>', buttons: [{ text: 'Tutup' }] });
+          if (done) done();
+        }
+      }]
+    });
+  }
+
   /* =============================== JADWAL UJIAN =============================== */
   VIEWS.ujian = async function (box) {
     let list = await U.api('g_ujianList');
-    box.innerHTML = '<div class="toolbar"><button class="btn primary" id="b-add" type="button">+ Buat Ujian</button><span class="muted small">Atur jadwal, token, aturan pelanggaran, dan soal yang dipakai.</span></div><div id="uj-tbl"></div>';
+    box.innerHTML = '<div class="toolbar"><button class="btn primary" id="b-add" type="button">+ Buat Ujian</button><select id="uj-ta"></select><span class="muted small">Atur jadwal, token, aturan pelanggaran, dan soal yang dipakai.</span></div><div id="uj-tbl"></div>';
     function draw() {
+      const ta = U.$('#uj-ta', box), keep = ta.value;
+      ta.innerHTML = opts(uniq(list.map(function (u) { return (u.tahun_ajaran || '-') + ' · ' + (u.semester || '-'); })).sort().reverse(), keep, 'Semua tahun ajaran');
+      const fl = ta.value;
+      const shown = list.filter(function (u) { return !fl || ((u.tahun_ajaran || '-') + ' · ' + (u.semester || '-')) === fl; });
       U.$('#uj-tbl', box).innerHTML = table([
-        { h: 'Ujian', f: function (u) { return '<b>' + esc(u.nama) + '</b><div class="small muted">' + esc(u.mapel) + (isAdmin() && u.guru ? ' · ' + esc(u.guru) : '') + '</div>'; } },
+        { h: 'Ujian', f: function (u) { return '<b>' + esc(u.nama) + '</b><div class="small muted">' + esc(u.mapel) + (u.jenis ? ' · ' + esc(u.jenis) : '') + (isAdmin() && u.guru ? ' · ' + esc(u.guru) : '') + '</div><div class="small muted">' + esc(u.tahun_ajaran || '-') + ' · ' + esc(u.semester || '-') + '</div>'; } },
         { h: 'Kelas', f: function (u) { return esc(u.kelas); } },
         { h: 'Jadwal (WIB)', f: function (u) { return esc(U.fmtJadwal(u.mulai)) + '<div class="small muted">s.d. ' + esc(U.fmtJadwal(u.selesai)) + '</div>'; } },
         { h: 'Durasi', cls: 'num', f: function (u) { return u.durasi + ' mnt'; } },
@@ -255,7 +415,7 @@
               '<button class="btn sm" data-ed="' + esc(u.id) + '">Edit</button> <button class="btn sm danger" data-rm="' + esc(u.id) + '">Hapus</button>';
           }
         }
-      ], list, 'Belum ada jadwal ujian. Klik "+ Buat Ujian".');
+      ], shown, 'Belum ada jadwal ujian. Klik "+ Buat Ujian".');
       const find = function (id) { return list.filter(function (u) { return u.id === id; })[0]; };
       U.$$('[data-mon]', box).forEach(function (b) { b.onclick = function () { U.go('monitor', { ujian: b.getAttribute('data-mon') }); }; });
       U.$$('[data-hs]', box).forEach(function (b) { b.onclick = function () { U.go('hasil', { ujian: b.getAttribute('data-hs') }); }; });
@@ -275,6 +435,7 @@
     }
     async function reload() { list = await U.api('g_ujianList'); draw(); }
     U.$('#b-add', box).onclick = function () { ujianForm(null, reload); };
+    U.$('#uj-ta', box).onchange = draw;
     draw();
   };
 
@@ -282,7 +443,7 @@
     try { meta = await U.api('g_meta'); } catch (e) { /* pakai meta lama */ }
     const set = meta.settings || {};
     const now = Date.now(), start = Math.ceil(now / 900000) * 900000;
-    u = u || { nama: '', mapel: '', kelas: '', durasi: 60, mulai: '', selesai: '', jumlah: 0, acak_soal: 'ya', acak_opsi: 'ya', kkm: set.kkm_default || 75, token: '', status: 'aktif', soal_ids: '', maks_langgar: set.maks_langgar_default || 3, aksi_langgar: 'kunci', tampil_nilai: 'tidak' };
+    u = u || { nama: '', mapel: '', kelas: '', durasi: 60, mulai: '', selesai: '', jumlah: 0, acak_soal: 'ya', acak_opsi: 'ya', kkm: set.kkm_default || 75, token: '', status: 'aktif', soal_ids: '', maks_langgar: set.maks_langgar_default || 3, aksi_langgar: 'kunci', tampil_nilai: 'tidak', jenis: '', tahun_ajaran: set.tahun_ajaran || '', semester: set.semester || 'Ganjil' };
     const mulai = u.mulai ? u.mulai.replace(' ', 'T') : toInput(start), selesai = u.selesai ? u.selesai.replace(' ', 'T') : toInput(start + 3 * 3600e3);
     const chosen = String(u.soal_ids || '').split(',').filter(Boolean);
     const m = U.modal({
@@ -300,6 +461,9 @@
         '<label>KKM<input id="u-kkm" type="number" min="0" max="100" value="' + esc(u.kkm) + '"></label>' +
         '<label>Token ujian<div style="display:flex;gap:8px"><input id="u-token" class="mono" value="' + esc(u.token) + '" style="text-transform:uppercase" placeholder="kosong = tanpa token"><button class="btn" type="button" id="u-gen">Acak</button></div></label>' +
         '<label>Status<select id="u-status"><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif (disembunyikan)</option></select></label>' +
+        '<label>Jenis ujian<input id="u-jenis" list="dl-j" value="' + esc(u.jenis || '') + '" placeholder="PTS / PAS / Ulangan Harian…"><datalist id="dl-j"><option value="PTS"><option value="PAS"><option value="PAT"><option value="Ulangan Harian"><option value="Ujian Sekolah"><option value="Try Out"><option value="Remedial"></datalist></label>' +
+        '<label>Tahun ajaran<input id="u-th" value="' + esc(u.tahun_ajaran || set.tahun_ajaran || '') + '" placeholder="2026/2027"></label>' +
+        '<label>Semester<select id="u-sem"><option value="Ganjil">Ganjil</option><option value="Genap">Genap</option></select></label>' +
         '<label>Batas pelanggaran<input id="u-maks" type="number" min="0" value="' + esc(u.maks_langgar) + '"><div class="hint">0 = hanya dicatat, tidak ada tindakan.</div></label>' +
         '<label>Tindakan jika batas tercapai<select id="u-aksi"><option value="kunci">Kunci (guru membuka)</option><option value="kumpulkan">Kumpulkan otomatis</option></select></label></div>' +
         '<label class="chk"><input type="checkbox" id="u-as"' + (u.acak_soal === 'ya' ? ' checked' : '') + '> Acak urutan soal</label>' +
@@ -310,6 +474,7 @@
         '<div class="pick" id="u-pick"><span class="muted small">Isi mata pelajaran untuk menampilkan soal.</span></div>',
       onOpen: function (mm) {
         mm.$('#u-status').value = u.status || 'aktif';
+        mm.$('#u-sem').value = u.semester === 'Genap' ? 'Genap' : (u.semester === 'Ganjil' ? 'Ganjil' : (set.semester === 'Genap' ? 'Genap' : 'Ganjil'));
         mm.$('#u-aksi').value = u.aksi_langgar || 'kunci';
         mm.$('#u-gen').onclick = function () { mm.$('#u-token').value = Math.random().toString(36).replace(/[^a-z0-9]/g, '').slice(2, 8).toUpperCase(); };
         let t = null;
@@ -336,6 +501,7 @@
             id: u.id, nama: mm.$('#u-nama').value, mapel: mm.$('#u-mapel').value, kelas: mm.$('#u-kelas').value,
             durasi: mm.$('#u-dur').value, mulai: mm.$('#u-mulai').value, selesai: mm.$('#u-selesai').value,
             jumlah: mm.$('#u-jml').value, kkm: mm.$('#u-kkm').value, token: mm.$('#u-token').value, status: mm.$('#u-status').value,
+            jenis: mm.$('#u-jenis').value, tahun_ajaran: mm.$('#u-th').value, semester: mm.$('#u-sem').value,
             maks_langgar: mm.$('#u-maks').value, aksi_langgar: mm.$('#u-aksi').value,
             acak_soal: mm.$('#u-as').checked, acak_opsi: mm.$('#u-ao').checked, tampil_nilai: mm.$('#u-tn').checked,
             soal_ids: mm.$$('#u-pick input:checked').map(function (i) { return i.value; })
@@ -644,20 +810,118 @@
     });
   }
 
+
+  /* =============================== TAHUN AJARAN, NAIK KELAS, ARSIP (admin) =============================== */
+  VIEWS.tahun = async function (box) {
+    const st = (await U.api('g_meta')).settings;
+    let kelas = await U.api('a_kelasInfo'), info = await U.api('a_arsipInfo');
+    const plan = {};
+    function nextKelas(k) {
+      const m = /^(XII|XI|X)([\s\-_.]*)(.*)$/i.exec(k.trim());
+      if (!m) return '';
+      const up = m[1].toUpperCase(), nx = up === 'X' ? 'XI' : up === 'XI' ? 'XII' : '';
+      return nx ? nx + m[2] + m[3] : '';
+    }
+    function draw() {
+      box.innerHTML =
+        '<div class="card" style="margin-bottom:16px"><h3 style="margin-top:0">Pergantian tahun ajaran, urutan yang disarankan</h3>' +
+        '<ol class="small" style="margin:8px 0 0 18px;line-height:1.7"><li><b>Arsipkan</b> ujian tahun/semester yang sudah selesai (bagian 2).</li>' +
+        '<li><b>Naik kelas</b> siswa, dan nonaktifkan kelas yang lulus (bagian 1).</li>' +
+        '<li>Ubah <b>Tahun ajaran / Semester aktif</b> di menu <a href="#" id="to-set">Pengaturan</a>. Saat ini: <b>' + esc(st.tahun_ajaran) + ' · Semester ' + esc(st.semester || '-') + '</b>.</li>' +
+        '<li>Tambah siswa baru (kelas X) lewat menu Pengguna. <b>Bank soal tidak terhapus</b>, jadi tetap bisa dipakai tahun depan.</li></ol></div>' +
+        '<div class="sec-head" style="margin-top:0"><h3>1. Naik kelas</h3></div>' +
+        '<div class="card"><div class="small muted" style="margin-bottom:8px">Pilih tindakan tiap kelas. Hasil ujian lama tetap mencatat kelas saat siswa mengikuti ujian.</div><div id="nk-tbl"></div>' +
+        '<p style="margin:12px 0 0"><button class="btn primary" id="nk-go" type="button">Terapkan naik kelas</button></p></div>' +
+        '<div class="sec-head"><h3>2. Arsip hasil ujian</h3></div><div id="ar-tbl"></div>' +
+        '<div class="sec-head"><h3>Arsip yang sudah dibuat</h3></div><div id="ar-old"></div>';
+      U.$('#to-set', box).onclick = function (e) { e.preventDefault(); U.go('pengaturan'); };
+      U.$('#nk-tbl', box).innerHTML = table([
+        { h: 'Kelas', f: function (k) { return '<b>' + esc(k.kelas) + '</b>'; } },
+        { h: 'Siswa', cls: 'num', f: function (k) { return k.aktif + (k.total !== k.aktif ? ' <span class="muted small">(+' + (k.total - k.aktif) + ' nonaktif)</span>' : ''); } },
+        { h: 'Tindakan', f: function (k, i) {
+          const p = plan[k.kelas] || { a: 'tetap', ke: '' };
+          return '<select data-a="' + i + '"><option value="tetap"' + (p.a === 'tetap' ? ' selected' : '') + '>Tetap</option><option value="naik"' + (p.a === 'naik' ? ' selected' : '') + '>Pindah ke kelas…</option><option value="lulus"' + (p.a === 'lulus' ? ' selected' : '') + '>Lulus (nonaktifkan)</option></select> ' +
+            '<input data-ke="' + i + '" placeholder="mis. XI-A" value="' + esc(p.ke) + '" style="width:120px"' + (p.a === 'naik' ? '' : ' disabled') + '>';
+        } }
+      ], kelas, 'Belum ada siswa.');
+      U.$$('[data-a]', box).forEach(function (el) {
+        el.onchange = function () {
+          const i = +el.getAttribute('data-a'), k = kelas[i].kelas;
+          plan[k] = plan[k] || { a: 'tetap', ke: '' };
+          plan[k].a = el.value;
+          const inp = U.$('[data-ke="' + i + '"]', box);
+          inp.disabled = el.value !== 'naik';
+          if (el.value === 'naik' && !inp.value) { inp.value = nextKelas(k); plan[k].ke = inp.value; }
+        };
+      });
+      U.$$('[data-ke]', box).forEach(function (el) {
+        el.oninput = function () { const k = kelas[+el.getAttribute('data-ke')].kelas; plan[k] = plan[k] || { a: 'naik', ke: '' }; plan[k].ke = el.value; };
+      });
+      U.$('#nk-go', box).onclick = applyNaik;
+
+      U.$('#ar-tbl', box).innerHTML = table([
+        { h: 'Tahun ajaran', f: function (g) { return '<b>' + esc(g.tahun) + '</b>'; } },
+        { h: 'Semester', f: function (g) { return esc(g.semester); } },
+        { h: 'Ujian', cls: 'num', f: function (g) { return g.ujian; } },
+        { h: 'Hasil siswa', cls: 'num', f: function (g) { return g.hasil; } },
+        { h: 'Pelanggaran', cls: 'num', f: function (g) { return g.pelanggaran; } },
+        { h: '', cls: 'right', f: function (g, i) { return (g.tahun === info.aktif.tahun && g.semester === info.aktif.semester ? '<span class="badge ok">aktif</span> ' : '') + '<button class="btn sm" data-ar="' + i + '">Arsipkan</button>'; } }
+      ], info.grup, 'Belum ada ujian yang bisa diarsipkan.');
+      U.$$('[data-ar]', box).forEach(function (b) { b.onclick = function () { doArsip(info.grup[+b.getAttribute('data-ar')]); }; });
+      U.$('#ar-old', box).innerHTML = table([
+        { h: 'Dibuat', f: function (a) { return esc(a.waktu); } },
+        { h: 'Tahun ajaran', f: function (a) { return esc(a.tahun); } },
+        { h: 'Semester', f: function (a) { return esc(a.semester); } },
+        { h: 'Ujian / hasil', cls: 'num', f: function (a) { return a.ujian + ' / ' + a.hasil; } },
+        { h: '', cls: 'right', f: function (a) { return '<a class="btn sm" target="_blank" rel="noopener" href="' + esc(a.url) + '">Buka Spreadsheet</a>'; } }
+      ], info.arsip, 'Belum ada arsip.');
+    }
+    async function applyNaik() {
+      const map = [], lulus = [];
+      kelas.forEach(function (k) {
+        const p = plan[k.kelas];
+        if (!p) return;
+        if (p.a === 'lulus') lulus.push(k.kelas);
+        else if (p.a === 'naik' && p.ke.trim() && p.ke.trim() !== k.kelas) map.push({ dari: k.kelas, ke: p.ke.trim() });
+      });
+      if (!map.length && !lulus.length) { U.toast('Belum ada tindakan yang dipilih.', 'err'); return; }
+      const ringkas = map.map(function (x) { return x.dari + ' → ' + x.ke; }).concat(lulus.map(function (x) { return x + ' → LULUS (nonaktif)'; })).join('\n');
+      if (!(await U.confirm('Terapkan perubahan berikut?\n\n' + ringkas + '\n\nSebaiknya hasil ujian semester ini sudah diarsipkan lebih dulu.', { okText: 'Terapkan' }))) return;
+      const r = await U.api('a_naikKelas', { map: map, lulus: lulus }, { timeout: 90000 });
+      U.toast(r.pindah + ' siswa dipindah kelas, ' + r.nonaktif + ' siswa dinonaktifkan.', 'ok', 6000);
+      Object.keys(plan).forEach(function (k) { delete plan[k]; });
+      kelas = await U.api('a_kelasInfo');
+      draw();
+    }
+    async function doArsip(g) {
+      const aktif = g.tahun === info.aktif.tahun && g.semester === info.aktif.semester;
+      if (!(await U.confirm('Arsipkan ' + g.ujian + ' ujian (' + g.hasil + ' hasil siswa) tahun ajaran ' + g.tahun + ' semester ' + g.semester + '?\n\n' +
+        'Datanya disalin ke Google Spreadsheet baru di Drive Anda, lalu dihapus dari data aktif agar aplikasi tetap cepat.' + (aktif ? '\n\nPERHATIAN: ini tahun ajaran/semester yang sedang aktif.' : ''), { okText: 'Arsipkan', danger: aktif }))) return;
+      U.toast('Mengarsipkan… mohon tunggu.', '', 8000);
+      const r = await U.api('a_arsip', { tahun: g.tahun, semester: g.semester }, { timeout: 180000 });
+      U.toast('Selesai: ' + r.ujian + ' ujian, ' + r.hasil + ' hasil diarsipkan.', 'ok', 6000);
+      U.modal({ title: 'Arsip Dibuat', body: '<p>Data sudah disalin ke Google Spreadsheet di Drive Anda.</p><p><a target="_blank" rel="noopener" href="' + esc(r.url) + '">Buka Spreadsheet arsip</a></p>', buttons: [{ text: 'Tutup', cls: 'primary' }] });
+      info = await U.api('a_arsipInfo');
+      draw();
+    }
+    draw();
+  };
+
   /* =============================== PENGATURAN (admin) =============================== */
   VIEWS.pengaturan = async function (box) {
     const s = (await U.api('g_meta')).settings;
     box.innerHTML = '<div class="card" style="max-width:640px"><div class="grid2">' +
       '<label>Nama sekolah<input id="s-sek" value="' + esc(s.nama_sekolah) + '"></label><label>Nama aplikasi<input id="s-app" value="' + esc(s.nama_aplikasi) + '"></label>' +
-      '<label>Tahun ajaran<input id="s-th" value="' + esc(s.tahun_ajaran) + '"></label><label>KKM bawaan<input id="s-kkm" type="number" value="' + esc(s.kkm_default) + '"></label>' +
+      '<label>Tahun ajaran aktif<input id="s-th" value="' + esc(s.tahun_ajaran) + '"></label><label>Semester aktif<select id="s-sem"><option value="Ganjil">Ganjil</option><option value="Genap">Genap</option></select></label><label>KKM bawaan<input id="s-kkm" type="number" value="' + esc(s.kkm_default) + '"></label>' +
       '<label>Batas pelanggaran bawaan<input id="s-mx" type="number" value="' + esc(s.maks_langgar_default) + '"></label>' +
       '<label>Wajib layar penuh<select id="s-fs"><option value="ya">Ya (disarankan)</option><option value="tidak">Tidak</option></select></label></div>' +
       '<label>Logo (URL gambar, kosongkan untuk memakai logo.png)<input id="s-logo" value="' + esc(s.logo_url) + '" placeholder="https://…"></label>' +
       '<button class="btn primary" id="s-save" type="button">Simpan Pengaturan</button></div>';
     U.$('#s-fs', box).value = s.wajib_fullscreen || 'ya';
+    U.$('#s-sem', box).value = s.semester === 'Genap' ? 'Genap' : 'Ganjil';
     U.$('#s-save', box).onclick = async function () {
       const r = await U.api('a_setSave', {
-        nama_sekolah: U.$('#s-sek', box).value, nama_aplikasi: U.$('#s-app', box).value, tahun_ajaran: U.$('#s-th', box).value, kkm_default: U.$('#s-kkm', box).value,
+        nama_sekolah: U.$('#s-sek', box).value, nama_aplikasi: U.$('#s-app', box).value, tahun_ajaran: U.$('#s-th', box).value, semester: U.$('#s-sem', box).value, kkm_default: U.$('#s-kkm', box).value,
         maks_langgar_default: U.$('#s-mx', box).value, wajib_fullscreen: U.$('#s-fs', box).value, logo_url: U.$('#s-logo', box).value
       });
       S.settings = r; meta.settings = r;

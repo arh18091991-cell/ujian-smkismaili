@@ -39,6 +39,117 @@
     if (m) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1400';
     return u;
   };
+  /* ---------- gambar di dalam teks: token [img:ID] (ID file Google Drive) ---------- */
+  U.driveSrc = function (id, w) { return 'https://lh3.googleusercontent.com/d/' + id + '=w' + (w || 1200); };
+  U.imgFallback = function (el) {
+    if (!el.getAttribute('data-f')) { el.setAttribute('data-f', '1'); el.src = 'https://drive.google.com/thumbnail?id=' + el.getAttribute('data-id') + '&sz=w1200'; return; }
+    el.outerHTML = '<span class="img-fail">[gambar gagal dimuat]</span>';
+  };
+  /** Teks aman + gambar. Hanya token [img:ID] yang diubah menjadi gambar; selebihnya di-escape. */
+  U.rich = function (s) {
+    return U.esc(s).replace(/\[img:([\w-]{10,80})\]/g, function (m, id) {
+      return '<img class="q-inline" data-id="' + id + '" src="' + U.driveSrc(id) + '" alt="gambar" referrerpolicy="no-referrer" onerror="U.imgFallback(this)">';
+    }).replace(/\r?\n/g, '<br>');
+  };
+  U.imgIds = function (s) {
+    const out = [], re = /\[img:([\w-]{10,80})\]/g;
+    let m;
+    while ((m = re.exec(String(s || '')))) out.push(m[1]);
+    return out;
+  };
+  /** Muat gambar soal lebih awal agar tidak menunggu saat siswa berpindah soal. */
+  U.prefetchSoal = function (soal) {
+    const urls = [];
+    soal.forEach(function (q) {
+      const g = U.imgUrl(q.gambar);
+      if (g) urls.push(g);
+      [q.wacana, q.pertanyaan].concat((q.opsi || []).map(function (o) { return o.t; })).forEach(function (t) {
+        U.imgIds(t).forEach(function (id) { urls.push(U.driveSrc(id)); });
+      });
+    });
+    let i = 0;
+    (function next() {
+      if (i >= urls.length) return;
+      const im = new Image();
+      im.referrerPolicy = 'no-referrer';
+      im.onload = im.onerror = function () { setTimeout(next, 150); };
+      im.src = urls[i++];
+    })();
+  };
+
+  /* ---------- unggah gambar (perkecil di perangkat → Google Drive) ---------- */
+  function fileToImage(file) {
+    return new Promise(function (resolve, reject) {
+      const url = URL.createObjectURL(file), im = new Image();
+      im.onload = function () { URL.revokeObjectURL(url); resolve(im); };
+      im.onerror = function () { URL.revokeObjectURL(url); reject(new Error('File bukan gambar yang valid.')); };
+      im.src = url;
+    });
+  }
+  U.shrinkImage = async function (file) {
+    if (!/^image\//.test(file.type)) throw new Error('Pilih file gambar (JPG, PNG, GIF, atau WEBP).');
+    const im = await fileToImage(file), MAX = 1200;
+    let w = im.naturalWidth, h = im.naturalHeight;
+    if (!w || !h) throw new Error('Gambar tidak terbaca.');
+    const k = Math.min(1, MAX / Math.max(w, h));
+    w = Math.round(w * k); h = Math.round(h * k);
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const cx = cv.getContext('2d');
+    cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h);
+    cx.drawImage(im, 0, 0, w, h);
+    let mime = 'image/png', data = cv.toDataURL('image/png').split(',')[1];     // PNG: tajam untuk rumus & tulisan
+    if (data.length > 650000) { mime = 'image/jpeg'; data = cv.toDataURL('image/jpeg', 0.85).split(',')[1]; }
+    if (data.length > 1200000) data = cv.toDataURL('image/jpeg', 0.6).split(',')[1];
+    if (data.length > 1400000) throw new Error('Gambar terlalu besar. Perkecil dulu lalu coba lagi.');
+    return { mime: mime, data: data, nama: (file.name || 'gambar').replace(/\.[^.]+$/, '') };
+  };
+  U.uploadImage = async function (file) {
+    const img = await U.shrinkImage(file);
+    const r = await U.api('g_unggah', img, { timeout: 90000 });
+    return r.id;
+  };
+  function insertAt(el, text) {
+    const a = el.selectionStart === undefined ? el.value.length : el.selectionStart, b = el.selectionEnd === undefined ? a : el.selectionEnd;
+    el.value = el.value.slice(0, a) + text + el.value.slice(b);
+    const pos = a + text.length;
+    try { el.setSelectionRange(pos, pos); } catch (e) { /* abaikan */ }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  /**
+   * Menambah kemampuan gambar pada kolom teks: tempel (Ctrl+V) atau tombol pilih file.
+   * mode 'token' -> menyisipkan [img:ID] di posisi kursor; mode 'url' -> mengisi kolom dengan alamat gambar.
+   */
+  U.imageField = function (el, btn, mode, onBusy) {
+    async function handle(file) {
+      if (btn) btn.disabled = true;
+      if (onBusy) onBusy(true);
+      try {
+        const id = await U.uploadImage(file);
+        if (mode === 'url') { el.value = U.driveSrc(id); el.dispatchEvent(new Event('input', { bubbles: true })); }
+        else insertAt(el, '[img:' + id + ']');
+        U.toast('Gambar diunggah.', 'ok');
+      } catch (e) { U.toast(e.message || 'Gagal mengunggah gambar.', 'err', 6000); }
+      finally { if (btn) btn.disabled = false; if (onBusy) onBusy(false); }
+    }
+    el.addEventListener('paste', function (ev) {
+      const items = (ev.clipboardData && ev.clipboardData.items) || [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file' && /^image\//.test(items[i].type)) {
+          const f = items[i].getAsFile();
+          if (f) { ev.preventDefault(); handle(f); return; }
+        }
+      }
+    });
+    if (btn) {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*'; inp.style.display = 'none';
+      btn.parentNode.insertBefore(inp, btn.nextSibling);
+      btn.onclick = function () { inp.value = ''; inp.click(); };
+      inp.onchange = function () { if (inp.files && inp.files[0]) handle(inp.files[0]); };
+    }
+  };
+
   U.clearTimers = function () { U.timers.forEach(function (t) { clearInterval(t); clearTimeout(t); }); U.timers = []; };
   U.every = function (fn, ms) { const t = setInterval(fn, ms); U.timers.push(t); return t; };
 
@@ -256,7 +367,7 @@
     U.app.innerHTML =
       '<div class="login-wrap"><div class="login-card">' +
       '<div class="login-brand">' + img + '<div><div class="lb-school">' + U.esc(S.settings.nama_sekolah || '') + '</div><h1>' + U.esc(nama) + '</h1>' +
-      '<div class="lb-year">Tahun Ajaran ' + U.esc(S.settings.tahun_ajaran || '') + '</div></div></div>' +
+      '<div class="lb-year">Tahun Ajaran ' + U.esc(S.settings.tahun_ajaran || '') + (S.settings.semester ? ' · Semester ' + U.esc(S.settings.semester) : '') + '</div></div></div>' +
       '<form id="f-login" autocomplete="off">' +
       (msg ? '<div class="alert err">' + U.esc(msg) + '</div>' : '') +
       (U.bootError ? '<div class="alert warn">' + U.esc(U.bootError) + '</div>' : '') +
