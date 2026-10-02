@@ -323,7 +323,9 @@
       const filled = LET.filter(function (k) { return r[k]; });
       let tp = q.tipe.toLowerCase();
       tp = /kompleks|pgk|banyak/.test(tp) ? 'pgk' : /isian|uraian|singkat/.test(tp) ? 'isian' : /pg|pilihan/.test(tp) ? 'pg' : '';
-      const huruf = q.kunci.toUpperCase().split(/[\s,;&]+|\bDAN\b/).filter(function (x) { return /^[A-E]$/.test(x); })
+      // kunci bisa ditulis "B", "A, C", "A dan C", atau "B. teks jawaban" (huruf + titik + isi pilihan, seperti di Word)
+      const km = /^\s*\(?([A-Ea-e](?:\s*(?:,|;|&|dan)\s*[A-Ea-e])*)\s*(?:[\.\):\-]|$)/i.exec(q.kunci);
+      const huruf = (km ? km[1] : q.kunci).toUpperCase().split(/[\s,;&]+|\bDAN\b/).filter(function (x) { return /^[A-E]$/.test(x); })
         .filter(function (x, i, a) { return a.indexOf(x) === i; }).sort();
       if (!tp) tp = filled.length >= 1 ? (huruf.length > 1 ? 'pgk' : 'pg') : 'isian';
       r.tipe = tp;
